@@ -22,6 +22,28 @@ func Fail[A any](err error) Task[A] {
 	})
 }
 
+func From[A any](f function.LazyErr[A]) Task[A] {
+	return (func() (A, error) {
+		return f()
+	})
+}
+
+func From1[A, B any](f function.MapLazyErr[A, B]) function.Mapping[A, Task[B]] {
+	return (func(a A) Task[B] {
+		return (func() (B, error) {
+			return f(a)
+		})
+	})
+}
+
+func From2[A, B, C any](f func(a A, b B) (C, error)) func(a A, b B) Task[C] {
+	return (func(a A, b B) Task[C] {
+		return (func() (C, error) {
+			return f(a, b)
+		})
+	})
+}
+
 func (t Task[A]) ToResult() result.Result[A] {
 	return result.From[A](func() (A, error) {
 		return t()
@@ -45,6 +67,23 @@ func FlatMap[A any, B any](t Task[A], f function.Mapping[A, Task[B]]) Task[B] {
 			return *new(B), err
 		}
 		return f(a)()
+	})
+}
+
+func Tap[A, B any](t Task[A], f function.Mapping[A, Task[B]]) Task[A] {
+	return func() (A, error) {
+		a, err := t()
+		if err != nil {
+			return a, err
+		}
+		_, err = f(a)()
+		return a, err
+	}
+}
+
+func Then[A any, B any](t Task[A], f function.MapLazyErr[A, B]) Task[B] {
+	return FlatMap(t, func(a A) Task[B] {
+		return func() (B, error) { return f(a) }
 	})
 }
 
@@ -79,9 +118,9 @@ func Sequence[A any](ts ...Task[A]) Task[[]A] {
 	})
 }
 
-func Traverse[A any](ts []A, f function.Mapping[A, Task[A]]) Task[[]A] {
-	return (func() ([]A, error) {
-		tasks := make([]Task[A], len(ts))
+func Traverse[A, B any](ts []A, f function.Mapping[A, Task[B]]) Task[[]B] {
+	return (func() ([]B, error) {
+		tasks := make([]Task[B], len(ts))
 		for i, t := range ts {
 			tasks[i] = f(t)
 		}
